@@ -1,0 +1,464 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<title>Hack & Slash 3D - Oyun</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<style>
+body { margin:0; overflow:hidden; background:black; font-family:sans-serif; }
+
+#lobby{
+  position:fixed; top:0; left:0; width:100%; height:100%;
+  background: linear-gradient(135deg, #1f1f1f, #111111);
+  display:flex; flex-direction:column;
+  justify-content:center; align-items:center;
+  z-index:50;
+  border: 5px solid #fff; border-radius:20px;
+  box-shadow: 0 0 30px rgba(255,255,255,0.3);
+}
+
+#lobby h1{
+  color:white; font-size:36px; margin-bottom:20px; text-shadow: 0 0 10px #fff;
+}
+
+#lobby input{
+  font-size:24px; padding:10px; margin-bottom:10px;
+  border-radius:10px; border:2px solid #fff; background:#222; color:white; text-align:center;
+}
+
+#namePreview{
+  color:yellow; font-size:24px; margin-bottom:20px; text-shadow:0 0 5px #fff;
+}
+
+#lobby button{
+  font-size:24px; padding:10px 30px; border-radius:10px;
+  border:none; background:linear-gradient(to right, #ff4a00, #ffb200);
+  color:white; cursor:pointer; box-shadow:0 0 15px rgba(255,180,0,0.5);
+  transition:0.2s all;
+}
+#lobby button:hover{
+  transform:scale(1.05); box-shadow:0 0 25px rgba(255,180,0,0.7);
+}
+
+#attackBtn {
+  position:fixed; right:20px; bottom:20px;
+  width:80px; height:80px; border-radius:50%;
+  background:red; color:white; border:none; font-size:18px; z-index:10;
+  cursor:pointer;
+}
+
+#joystickBase {
+  position:fixed; left:20px; bottom:20px;
+  width:120px; height:120px; border-radius:50%;
+  background:rgba(255,255,255,0.2); z-index:10;
+}
+
+#joystickStick {
+  position:absolute;
+  left:50%; top:50%;
+  transform:translate(-50%, -50%);
+  width:50px; height:50px; border-radius:50%;
+  background:rgba(255,255,255,0.8);
+}
+
+#playerHP {
+  position:fixed; top:20px; left:20px;
+  width:150px; height:20px; background:#400; z-index:10;
+  border-radius:4px;
+}
+#playerHP div { width:100%; height:100%; background:lime; border-radius:4px; }
+
+#bossHPContainer{
+  position:fixed;
+  width:120px;
+  height:14px;
+  background:#400;
+  border:2px solid white;
+  border-radius:8px;
+  display:none;
+  z-index:20;
+  transform:translate(-50%, 0);
+  pointer-events:none;
+}
+#bossHPBar{
+  width:100%;
+  height:100%;
+  background:red;
+  border-radius:6px;
+  transition: width 0.3s;
+}
+
+.nameTag{
+  position:absolute;
+  color:yellow;
+  font-weight:bold;
+  text-shadow:0 0 5px black;
+  pointer-events:none;
+}
+</style>
+</head>
+<body>
+
+<div id="lobby">
+  <h1>Hack & Slash 3D</h1>
+  <input id="playerNameInput" placeholder="Kullanıcı Adı" />
+  <div id="namePreview">Oyuncu</div>
+  <button id="playBtn">Oyna</button>
+</div>
+
+<div id="playerHP"><div id="hpBar"></div></div>
+<div id="bossHPContainer"><div id="bossHPBar"></div></div>
+<div id="joystickBase"><div id="joystickStick"></div></div>
+<button id="attackBtn">VUR</button>
+
+<audio id="bossMusic" src="https://cdn.jsdelivr.net/gh/Yasinkrallar/game-music/REBOLATON%20(slowed).mp3" loop></audio>
+
+<script src="https://cdn.jsdelivr.net/npm/three@0.150.1/build/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@tweenjs/tween.js@18.6.4/dist/tween.umd.js"></script>
+
+<script>
+// --- LOBİ MANTIĞI ---
+const lobby = document.getElementById("lobby");
+const input = document.getElementById("playerNameInput");
+const preview = document.getElementById("namePreview");
+const playBtn = document.getElementById("playBtn");
+
+let playerName = "Oyuncu";
+let renderer; // Three.js renderer'ı global olarak tanımlandı
+
+// Canlı isim güncelleme
+input.addEventListener("input", ()=>{
+  if(input.value.trim()==="") preview.innerText="Oyuncu";
+  else preview.innerText=input.value.trim();
+});
+
+// Oyna butonu: Oyunu başlatır ve lobiyi gizler.
+playBtn.addEventListener("click", ()=>{
+  playerName = input.value.trim() || "Oyuncu";
+  lobby.style.display="none"; // Lobiyi gizle
+  startGame(); // Oyunu başlat
+});
+
+// --- OYUN MANTIĞI ---
+function startGame(){
+  // --- THREE.JS BAŞLANGIÇ VE SAHNE ---
+  const scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x202020);
+  const camera = new THREE.PerspectiveCamera(75, innerWidth/innerHeight, 0.1, 1000);
+  camera.position.set(0, 6, 10);
+  camera.lookAt(0, 1, 0);
+
+  // Renderer'ı burada oluştur ve body'ye ekle (Oyunun açılmasını sağlayan kritik adım)
+  renderer = new THREE.WebGLRenderer();
+  renderer.setSize(innerWidth, innerHeight);
+  document.body.appendChild(renderer.domElement);
+
+  const light = new THREE.DirectionalLight(0xffffff, 1);
+  light.position.set(10, 20, 5);
+  scene.add(light);
+
+  const floor = new THREE.Mesh(
+    new THREE.PlaneGeometry(100, 100),
+    new THREE.MeshStandardMaterial({ color: 0x444444 })
+  );
+  floor.rotation.x = -Math.PI/2;
+  scene.add(floor);
+
+  // Oyuncu
+  const player = new THREE.Mesh(
+    new THREE.BoxGeometry(1,2,1),
+    new THREE.MeshStandardMaterial({ color: 0x00ff00 })
+  );
+  player.position.y=1;
+  scene.add(player);
+
+  const sword = new THREE.Mesh(
+    new THREE.BoxGeometry(0.2,1.5,0.2),
+    new THREE.MeshStandardMaterial({color:0xffffff})
+  );
+  sword.position.set(0.6,0.5,0);
+  sword.rotation.z=-Math.PI/4;
+  player.add(sword);
+
+  // --- OYUN DEĞİŞKENLERİ ---
+  let playerHP = 100;
+  let isImmortal=false;
+  let isAttacking=false;
+  const hpBar=document.getElementById("hpBar");
+  const enemies=[];
+  for(let i=0;i<7;i++) spawnEnemy();
+
+  function spawnEnemy(){
+    const e = new THREE.Mesh(
+      new THREE.BoxGeometry(1,2,1),
+      new THREE.MeshStandardMaterial({ color: 0xff0000 })
+    );
+    e.position.set(Math.random()*40-20,1,Math.random()*40-20);
+    e.userData.hp=50;
+    enemies.push(e);
+    scene.add(e);
+  }
+
+  const pickups=[];
+  function createPlus(position){
+    const g = new THREE.Group();
+    const b1 = new THREE.Mesh(new THREE.BoxGeometry(0.8,0.2,0.2), new THREE.MeshStandardMaterial({color:0x00ff00}));
+    const b2 = new THREE.Mesh(new THREE.BoxGeometry(0.2,0.8,0.2), new THREE.MeshStandardMaterial({color:0x00ff00}));
+    g.add(b1); g.add(b2);
+    g.position.copy(position); g.position.y+=1;
+    pickups.push(g); scene.add(g);
+  }
+
+  // --- Ses Kontrolü ---
+  const bossMusic=document.getElementById("bossMusic");
+  let audioUnlocked=false;
+
+  // Ses kısıtlamasını kaldırmak için ilk etkileşim dinleniyor
+  document.addEventListener("pointerdown",()=>{
+    if(!audioUnlocked){
+      bossMusic.volume=0;
+      bossMusic.play().then(()=>{
+        audioUnlocked=true;
+        fadeInMusic();
+      });
+    }
+  },{once:true});
+
+  function fadeInMusic(){
+    if(!audioUnlocked) return;
+    if(bossMusic.paused) bossMusic.play();
+    let v = bossMusic.volume;
+    const target=0.5;
+    const i=setInterval(()=>{
+      v+=0.01;
+      bossMusic.volume=Math.min(v,target);
+      if(v>=target) clearInterval(i);
+    },50);
+  }
+  function fadeOutMusic(){
+    if(!audioUnlocked || bossMusic.paused) return;
+    let v = bossMusic.volume;
+    const i=setInterval(()=>{
+      v-=0.02;
+      bossMusic.volume=Math.max(v,0);
+      if(v<=0){
+        clearInterval(i); bossMusic.pause(); bossMusic.volume=0;
+      }
+    },50);
+  }
+
+  // --- Boss ---
+  let boss=null, bossHP=300, bossMaxHP=300;
+  const bossBar=document.getElementById("bossHPBar");
+  const bossUI=document.getElementById("bossHPContainer");
+
+  function spawnBoss(){
+    boss=new THREE.Mesh(
+      new THREE.BoxGeometry(3,4,3),
+      new THREE.MeshStandardMaterial({color:0x8000ff})
+    );
+    boss.position.set(0,2,-30);
+    bossHP=bossMaxHP;
+    scene.add(boss);
+    bossUI.style.display="block";
+    bossBar.style.width="100%";
+    if(audioUnlocked) fadeInMusic();
+  }
+  spawnBoss();
+
+  // --- Saldırı ---
+  document.getElementById("attackBtn").addEventListener("touchstart",(e)=>{
+    e.preventDefault();
+    if(isAttacking) return;
+    isAttacking=true;
+    const originalZ=-Math.PI/4;
+    const attackZ=Math.PI/2;
+
+    new TWEEN.Tween({z:originalZ}).to({z:attackZ},100).easing(TWEEN.Easing.Quadratic.Out).onUpdate(obj=>{
+      sword.rotation.z=obj.z;
+    }).start();
+
+    new TWEEN.Tween({z:attackZ}).to({z:originalZ},200).delay(100).easing(TWEEN.Easing.Quadratic.In).onUpdate(obj=>{
+      sword.rotation.z=obj.z;
+    }).onComplete(()=>{isAttacking=false}).start();
+
+    // Düşman hasar
+    enemies.forEach(enemy=>{
+      if(player.position.distanceTo(enemy.position)<2.5){
+        enemy.userData.hp-=25;
+        if(enemy.userData.hp<=0){
+          createPlus(enemy.position);
+          enemy.position.set(Math.random()*60-30,1,Math.random()*60-30);
+          enemy.userData.hp=50;
+        }
+      }
+    });
+
+    // Boss hasar
+    if(boss && player.position.distanceTo(boss.position)<5){
+      bossHP-=15;
+      bossBar.style.width=(bossHP/bossMaxHP*100)+"%";
+      if(bossHP<=0){
+        scene.remove(boss); boss=null;
+        bossUI.style.display="none";
+        fadeOutMusic();
+        setTimeout(spawnBoss,30000);
+      }
+    }
+  });
+
+  // --- Joystick ve Kamera ---
+  const base=document.getElementById("joystickBase");
+  const stick=document.getElementById("joystickStick");
+  let joyX=0,joyY=0,activeTouchId=null,maxTravel=40;
+
+  base.addEventListener("touchstart",e=>{
+    if(activeTouchId!==null) return;
+    const touch=e.changedTouches[0];
+    activeTouchId=touch.identifier;
+    e.preventDefault();
+  });
+
+  base.addEventListener("touchend",e=>{
+    for(let i=0;i<e.changedTouches.length;i++){
+      if(e.changedTouches[i].identifier===activeTouchId){
+        activeTouchId=null;
+        joyX=joyY=0;
+        stick.style.left="50%"; stick.style.top="50%";
+        stick.style.transform="translate(-50%,-50%)";
+      }
+    }
+  });
+
+  base.addEventListener("touchmove",e=>{
+    let touch=null;
+    for(let i=0;i<e.changedTouches.length;i++){
+      if(e.changedTouches[i].identifier===activeTouchId){
+        touch=e.changedTouches[i]; break;
+      }
+    }
+    if(!touch) return;
+    const r=base.getBoundingClientRect();
+    const centerX=r.left+r.width/2;
+    const centerY=r.top+r.height/2;
+    let dx=touch.clientX-centerX;
+    let dy=touch.clientY-centerY;
+    const distance=Math.sqrt(dx*dx+dy*dy);
+    if(distance>maxTravel){
+      dx=(dx/distance)*maxTravel; dy=(dy/distance)*maxTravel;
+    }
+    joyX=dx; joyY=dy;
+    stick.style.left=`calc(50% + ${joyX}px)`;
+    stick.style.top=`calc(50% + ${joyY}px)`;
+    stick.style.transform="translate(-50%,-50%)";
+  });
+
+  // Kamera kontrol
+  let lx=0,ly=0,rx=0,ry=0,cameraTouchId=null,cameraRotationSpeed=0.005;
+  renderer.domElement.addEventListener("touchstart",e=>{
+    if(activeTouchId!==null || cameraTouchId!==null) return;
+    const touch=e.changedTouches[0];
+    const isJoystickArea=(touch.clientX<160 && touch.clientY>innerHeight-160);
+    const isAttackArea=(touch.clientX>innerWidth-100 && touch.clientY>innerHeight-100);
+    if(isJoystickArea || isAttackArea) return;
+    cameraTouchId=touch.identifier; lx=touch.clientX; ly=touch.clientY;
+  });
+  renderer.domElement.addEventListener("touchend",e=>{
+    for(let i=0;i<e.changedTouches.length;i++){
+      if(e.changedTouches[i].identifier===cameraTouchId) cameraTouchId=null;
+    }
+  });
+  renderer.domElement.addEventListener("touchmove",e=>{
+    let touch=null;
+    for(let i=0;i<e.changedTouches.length;i++){
+      if(e.changedTouches[i].identifier===cameraTouchId){ touch=e.changedTouches[i]; break; }
+    }
+    if(!touch) return;
+    const dx=touch.clientX-lx;
+    const dy=touch.clientY-ly;
+    ry-=dx*cameraRotationSpeed;
+    rx=Math.max(-Math.PI/2,Math.min(Math.PI/2,rx-(dy*cameraRotationSpeed)));
+    lx=touch.clientX; ly=touch.clientY;
+  });
+
+  // --- Name Tag ---
+  const nameTag = document.createElement("div");
+  nameTag.className="nameTag";
+  nameTag.innerText = playerName;
+  document.body.appendChild(nameTag);
+
+  function updateNameTag(){
+    const v = player.position.clone(); v.y+=2;
+    v.project(camera);
+    const x = (v.x*0.5+0.5)*innerWidth;
+    const y = (-v.y*0.5+0.5)*innerHeight;
+    nameTag.style.left=x+"px";
+    nameTag.style.top=y+"px";
+  }
+
+  // --- Animasyon döngüsü ---
+  function animate(){
+    requestAnimationFrame(animate);
+    TWEEN.update();
+
+    // Oyuncu hareketi
+    const speed=0.1;
+    if(joyX!==0 || joyY!==0){
+      const angle=Math.atan2(joyX,joyY);
+      player.rotation.y = camera.rotation.y + angle;
+      const forward = new THREE.Vector3(0,0,1).applyAxisAngle(new THREE.Vector3(0,1,0), player.rotation.y).multiplyScalar(speed);
+      player.position.add(forward);
+    }
+
+    // Kamera takibi
+    const cameraOffset = new THREE.Vector3(0,5,12).applyEuler(new THREE.Euler(rx,ry,0,'YXZ'));
+    camera.position.copy(player.position).add(cameraOffset);
+    camera.lookAt(player.position.x, player.position.y+1, player.position.z);
+
+    // Düşman hareketi
+    enemies.forEach(enemy=>{
+      const dir=new THREE.Vector3().subVectors(player.position,enemy.position).normalize();
+      enemy.lookAt(player.position.x,enemy.position.y,player.position.z);
+      enemy.position.add(dir.multiplyScalar(0.04));
+      if(enemy.position.distanceTo(player.position)<1.4 && !isImmortal){
+        playerHP-=0.3; hpBar.style.width=playerHP+"%";
+        if(playerHP<=0){
+          playerHP=100; hpBar.style.width="100%";
+          isImmortal=true; player.material.color.set(0x00ffff);
+          setTimeout(()=>{isImmortal=false; player.material.color.set(0x00ff00)},5000);
+        }
+      }
+    });
+
+    // Pickup toplama
+    pickups.forEach((p,i)=>{
+      p.rotation.y+=0.05;
+      if(p.position.distanceTo(player.position)<1.5){
+        if(playerHP<100){playerHP+=20;if(playerHP>100)playerHP=100; hpBar.style.width=playerHP+"%";}
+        scene.remove(p); pickups.splice(i,1);
+      }
+    });
+
+    // Boss yönetimi
+    if(boss){
+      const v=boss.position.clone(); v.y+=4; v.project(camera);
+      bossUI.style.left=`calc(${v.x*0.5+0.5}*100vw)`;
+      bossUI.style.top=`calc(${-v.y*0.5+0.5}*100vh)`;
+      const dir=new THREE.Vector3().subVectors(player.position,boss.position).normalize();
+      boss.position.add(dir.multiplyScalar(0.02));
+      boss.lookAt(player.position.x,boss.position.y,player.position.z);
+      if(boss.position.distanceTo(player.position)<2.5 && !isImmortal){
+        playerHP-=0.5; hpBar.style.width=playerHP+"%";
+      }
+    }
+
+    updateNameTag(); // Name tag güncelle
+    renderer.render(scene,camera);
+  }
+
+  // Oyunu başlattıktan sonra animasyon döngüsünü başlat
+  animate();
+}
+</script>
+</body>
+</html>
